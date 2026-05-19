@@ -1,299 +1,302 @@
-// using System.Net;
-// using System.Net.Http.Json;
-// using back.Enums;
-// using back.Models;
-// using Microsoft.AspNetCore.Mvc.Testing;
+using System.Diagnostics;
+using System.Net;
+using System.Net.Http.Json;
+using back.Enums;
+using back.Models;
+using Microsoft.AspNetCore.Mvc.Testing;
 
-// namespace back.Tests.Integration;
+namespace back.Tests.Integration;
 
-// /// <summary>
-// /// Интеграционные тесты для Product API.
-// /// Проверяют реальные HTTP-запросы к серверу без изоляции зависимостей.
-// /// 
-// /// Техники тест-дизайна:
-// /// - Эквивалентное разбиение (создание, получение, удаление)
-// /// - Анализ граничных значений (пустое имя, нулевые БЖУ, максимальные значения)
-// /// </summary>
-// public class ProductApiTests : IClassFixture<WebApplicationFactory<Program>>
-// {
-//     private readonly HttpClient _client;
 
-//     public ProductApiTests(WebApplicationFactory<Program> factory)
-//     {
-//         _client = factory.CreateClient();
-//     }
+public class ProductApiTests : IClassFixture<WebApplicationFactory<Program>>
+{
+    private readonly HttpClient _client;
 
-//     // ======================
-//     // Эквивалентное разбиение
-//     // ======================
+    public ProductApiTests(WebApplicationFactory<Program> factory)
+    {
+        _client = factory.CreateClient();
+    }
 
-//     /// <summary>
-//     /// Класс эквивалентности: создание продукта с валидными данными.
-//     /// Ожидаем: 200 OK и корректные данные в ответе.
-//     /// </summary>
-//     [Fact]
-//     public async Task CreateProduct_ValidData_ReturnsOk()
-//     {
-//         // Arrange
-//         var formData = new MultipartFormDataContent();
-//         formData.Add(new StringContent("Тестовый продукт"), "Name");
-//         formData.Add(new StringContent("150"), "Calories");
-//         formData.Add(new StringContent("10"), "Proteins");
-//         formData.Add(new StringContent("5"), "Fats");
-//         formData.Add(new StringContent("20"), "Carbohydrates");
-//         formData.Add(new StringContent("0"), "Category");
-//         formData.Add(new StringContent("0"), "Readiness");
-//         formData.Add(new StringContent("0"), "DietaryFlags");
+    [Fact]
+    public async Task CreateProduct_ValidData_ReturnsOk()
+    {
+        var formData = new MultipartFormDataContent();
+        formData.Add(new StringContent("Тестовый продукт"), "Name");  
+        formData.Add(new StringContent("150"), "Calories");            
+        formData.Add(new StringContent("10"), "Proteins");             
+        formData.Add(new StringContent("5"), "Fats");                  
+        formData.Add(new StringContent("20"), "Carbohydrates");        
+        formData.Add(new StringContent("0"), "Category");              
+        formData.Add(new StringContent("0"), "Readiness");             
+        formData.Add(new StringContent("0"), "DietaryFlags");          
 
-//         // Act
-//         var response = await _client.PostAsync("/api/product", formData);
-//         var product = await response.Content.ReadFromJsonAsync<Product>();
+        
+        var response = await _client.PostAsync("/api/product", formData);
+        var product = await response.Content.ReadFromJsonAsync<Product>();
+        
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);  
+        Assert.NotNull(product);                                
+        Assert.Equal("Тестовый продукт", product.Name);        
+        Assert.Equal(150, product.Calories);                    
+    }
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-//         Assert.NotNull(product);
-//         Assert.Equal("Тестовый продукт", product!.Name);
-//         Assert.Equal(150, product.Calories);
-//         Assert.Equal(10, product.Proteins);
-//         Assert.Equal(5, product.Fats);
-//         Assert.Equal(20, product.Carbohydrates);
-//     }
+    [Theory]
+    [InlineData("Тестовый продукт", HttpStatusCode.OK)]    
+    [InlineData("Аб", HttpStatusCode.OK)]                  //минимум   
+    [InlineData("А", HttpStatusCode.BadRequest)]            //меньше минимума 
+    public async Task CreateProduct_NameLength_ReturnsExpectedStatus(string name, HttpStatusCode expectedStatus)
+    {
+        var formData = new MultipartFormDataContent();
+        formData.Add(new StringContent(name), "Name");
+        formData.Add(new StringContent("100"), "Calories");
+        formData.Add(new StringContent("10"), "Proteins");
+        formData.Add(new StringContent("5"), "Fats");
+        formData.Add(new StringContent("20"), "Carbohydrates");
+        formData.Add(new StringContent("0"), "Category");
+        formData.Add(new StringContent("0"), "Readiness");
+        formData.Add(new StringContent("0"), "DietaryFlags");
 
-//     /// <summary>
-//     /// Класс эквивалентности: получение списка продуктов.
-//     /// Ожидаем: 200 OK и непустой список.
-//     /// </summary>
-//     [Fact]
-//     public async Task GetProducts_ReturnsList()
-//     {
-//         // Act
-//         var response = await _client.GetAsync("/api/product");
+        var response = await _client.PostAsync("/api/product", formData);
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-//         var products = await response.Content.ReadFromJsonAsync<List<Product>>();
-//         Assert.NotNull(products);
-//     }
+        Assert.Equal(expectedStatus, response.StatusCode);
+    }
 
-//     /// <summary>
-//     /// Класс эквивалентности: получение продукта по ID.
-//     /// Ожидаем: 200 OK и правильный продукт.
-//     /// </summary>
-//     [Fact]
-//     public async Task GetProductById_ExistingId_ReturnsProduct()
-//     {
-//         // Arrange — сначала создаём продукт
-//         var createForm = new MultipartFormDataContent();
-//         createForm.Add(new StringContent("Для получения"), "Name");
-//         createForm.Add(new StringContent("100"), "Calories");
-//         createForm.Add(new StringContent("5"), "Proteins");
-//         createForm.Add(new StringContent("2"), "Fats");
-//         createForm.Add(new StringContent("10"), "Carbohydrates");
-//         createForm.Add(new StringContent("0"), "Category");
-//         createForm.Add(new StringContent("0"), "Readiness");
-//         createForm.Add(new StringContent("0"), "DietaryFlags");
+    [Theory]
+    [InlineData("0", "0", "0", HttpStatusCode.OK)]            // нулевое кбжу
+    [InlineData("40", "30", "30", HttpStatusCode.OK)]          // сумма = 100
+    [InlineData("50", "50", "50", HttpStatusCode.BadRequest)]  // сумма 150 > 100
+    [InlineData("100", "0", "0", HttpStatusCode.OK)]           // белки = 100
+    [InlineData("0", "100", "0", HttpStatusCode.OK)]           // жиры = 100
+    [InlineData("0", "0", "100", HttpStatusCode.OK)]           // углеводы = 100
+    [InlineData("-1", "0", "0", HttpStatusCode.BadRequest)]    // отрицательные белки
+    [InlineData("0", "-1", "0", HttpStatusCode.BadRequest)]    // отрицательные жиры
+    [InlineData("0", "0", "-1", HttpStatusCode.BadRequest)]    // отрицательные углеводы
+    [InlineData("-10", "-10", "-10", HttpStatusCode.BadRequest)] // всё отрицательное
+    public async Task CreateProduct_CPFC_ReturnsExpectedStatus(
+        string proteins, string fats, string carbs, HttpStatusCode expectedStatus)
+    {
+        var formData = new MultipartFormDataContent();
+        formData.Add(new StringContent("Тест БЖУ"), "Name");
+        formData.Add(new StringContent("200"), "Calories");
+        formData.Add(new StringContent(proteins), "Proteins");
+        formData.Add(new StringContent(fats), "Fats");
+        formData.Add(new StringContent(carbs), "Carbohydrates");
+        formData.Add(new StringContent("0"), "Category");
+        formData.Add(new StringContent("0"), "Readiness");
+        formData.Add(new StringContent("0"), "DietaryFlags");
 
-//         var createResponse = await _client.PostAsync("/api/product", createForm);
-//         var created = await createResponse.Content.ReadFromJsonAsync<Product>();
+        var response = await _client.PostAsync("/api/product", formData);
 
-//         // Act
-//         var response = await _client.GetAsync($"/api/product/{created!.Id}");
+        Assert.Equal(expectedStatus, response.StatusCode);
+    }
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-//         var product = await response.Content.ReadFromJsonAsync<Product>();
-//         Assert.Equal(created.Id, product!.Id);
-//         Assert.Equal("Для получения", product.Name);
-//     }
 
-//     /// <summary>
-//     /// Класс эквивалентности: несуществующий ID → 404.
-//     /// </summary>
-//     [Fact]
-//     public async Task GetProductById_NonExistingId_ReturnsNotFound()
-//     {
-//         // Act
-//         var response = await _client.GetAsync($"/api/product/{Guid.NewGuid()}");
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-//     }
+    [Fact]
+    public async Task GetProductById_ExistingId_ReturnsProduct()
+    {
+        
+        var createForm = new MultipartFormDataContent();
+        createForm.Add(new StringContent("Для получения"), "Name");
+        createForm.Add(new StringContent("100"), "Calories");
+        createForm.Add(new StringContent("5"), "Proteins");
+        createForm.Add(new StringContent("2"), "Fats");
+        createForm.Add(new StringContent("10"), "Carbohydrates");
+        createForm.Add(new StringContent("0"), "Category");
+        createForm.Add(new StringContent("0"), "Readiness");
+        createForm.Add(new StringContent("0"), "DietaryFlags");
 
-//     /// <summary>
-//     /// Класс эквивалентности: фильтрация по категории.
-//     /// Ожидаем: только продукты указанной категории.
-//     /// </summary>
-//     [Fact]
-//     public async Task GetProducts_FilterByCategory_ReturnsFilteredList()
-//     {
-//         // Act
-//         var response = await _client.GetAsync("/api/product/filter?category=0");
+        var createResponse = await _client.PostAsync("/api/product", createForm);
+        var created = await createResponse.Content.ReadFromJsonAsync<Product>();
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-//         var products = await response.Content.ReadFromJsonAsync<List<Product>>();
-//         Assert.NotNull(products);
-//         Assert.All(products, p => Assert.Equal(0, (int)p.Category));
-//     }
+       
+        var response = await _client.GetAsync($"/api/product/{created!.Id}");
+        var product = await response.Content.ReadFromJsonAsync<Product>();
+        
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(product);
+        Assert.Equal(created.Id, product.Id);
+        Assert.Equal("Для получения", product.Name);
+        Assert.Equal(100, product.Calories);
+    }
 
-//     // ======================
-//     // Анализ граничных значений
-//     // ======================
+    [Fact]
+    public async Task GetProductById_NonExistingId_ReturnsNotFound()
+    {
+        var response = await _client.GetAsync($"/api/product/{Guid.NewGuid()}");
 
-//     /// <summary>
-//     /// Граничное значение: имя продукта из 2 символов (минимальная длина).
-//     /// Ожидаем: 200 OK.
-//     /// </summary>
-//     [Fact]
-//     public async Task CreateProduct_MinNameLength_ReturnsOk()
-//     {
-//         // Arrange
-//         var formData = new MultipartFormDataContent();
-//         formData.Add(new StringContent("Аб"), "Name"); // ровно 2 символа
-//         formData.Add(new StringContent("100"), "Calories");
-//         formData.Add(new StringContent("10"), "Proteins");
-//         formData.Add(new StringContent("5"), "Fats");
-//         formData.Add(new StringContent("20"), "Carbohydrates");
-//         formData.Add(new StringContent("0"), "Category");
-//         formData.Add(new StringContent("0"), "Readiness");
-//         formData.Add(new StringContent("0"), "DietaryFlags");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 
-//         // Act
-//         var response = await _client.PostAsync("/api/product", formData);
+    [Fact]
+    public async Task DeleteProduct_ExistingId_ReturnsOk()
+    {
+        var createForm = new MultipartFormDataContent();
+        createForm.Add(new StringContent("Для удаления"), "Name");
+        createForm.Add(new StringContent("100"), "Calories");
+        createForm.Add(new StringContent("5"), "Proteins");
+        createForm.Add(new StringContent("2"), "Fats");
+        createForm.Add(new StringContent("10"), "Carbohydrates");
+        createForm.Add(new StringContent("0"), "Category");
+        createForm.Add(new StringContent("0"), "Readiness");
+        createForm.Add(new StringContent("0"), "DietaryFlags");
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-//     }
+        var createResponse = await _client.PostAsync("/api/product", createForm);
+        var created = await createResponse.Content.ReadFromJsonAsync<Product>();
 
-//     /// <summary>
-//     /// Граничное значение: имя из 1 символа (ниже минимальной длины).
-//     /// Ожидаем: 400 Bad Request.
-//     /// </summary>
-//     [Fact]
-//     public async Task CreateProduct_NameTooShort_ReturnsBadRequest()
-//     {
-//         // Arrange
-//         var formData = new MultipartFormDataContent();
-//         formData.Add(new StringContent("А"), "Name"); // 1 символ
-//         formData.Add(new StringContent("100"), "Calories");
-//         formData.Add(new StringContent("10"), "Proteins");
-//         formData.Add(new StringContent("5"), "Fats");
-//         formData.Add(new StringContent("20"), "Carbohydrates");
-//         formData.Add(new StringContent("0"), "Category");
-//         formData.Add(new StringContent("0"), "Readiness");
-//         formData.Add(new StringContent("0"), "DietaryFlags");
+        var deleteResponse = await _client.DeleteAsync($"/api/product/{created!.Id}");
 
-//         // Act
-//         var response = await _client.PostAsync("/api/product", formData);
+        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-//     }
+        var getResponse = await _client.GetAsync($"/api/product/{created.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+    }
 
-//     /// <summary>
-//     /// Граничное значение: нулевые калории.
-//     /// Ожидаем: 200 OK.
-//     /// </summary>
-//     [Fact]
-//     public async Task CreateProduct_ZeroCalories_ReturnsOk()
-//     {
-//         // Arrange
-//         var formData = new MultipartFormDataContent();
-//         formData.Add(new StringContent("Вода"), "Name");
-//         formData.Add(new StringContent("0"), "Calories");
-//         formData.Add(new StringContent("0"), "Proteins");
-//         formData.Add(new StringContent("0"), "Fats");
-//         formData.Add(new StringContent("0"), "Carbohydrates");
-//         formData.Add(new StringContent("0"), "Category");
-//         formData.Add(new StringContent("0"), "Readiness");
-//         formData.Add(new StringContent("0"), "DietaryFlags");
 
-//         // Act
-//         var response = await _client.PostAsync("/api/product", formData);
+    [Fact]
+    public async Task DeleteProduct_NonExistingId_ReturnsNotFound()
+    {
+        var response = await _client.DeleteAsync($"/api/product/{Guid.NewGuid()}");
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-//     }
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 
-//     /// <summary>
-//     /// Граничное значение: сумма БЖУ = 100 (верхняя граница).
-//     /// Ожидаем: 200 OK.
-//     /// </summary>
-//     [Fact]
-//     public async Task CreateProduct_MaxNutrientsSum_ReturnsOk()
-//     {
-//         // Arrange
-//         var formData = new MultipartFormDataContent();
-//         formData.Add(new StringContent("Максимум БЖУ"), "Name");
-//         formData.Add(new StringContent("500"), "Calories");
-//         formData.Add(new StringContent("40"), "Proteins");
-//         formData.Add(new StringContent("30"), "Fats");
-//         formData.Add(new StringContent("30"), "Carbohydrates");
-//         formData.Add(new StringContent("0"), "Category");
-//         formData.Add(new StringContent("0"), "Readiness");
-//         formData.Add(new StringContent("0"), "DietaryFlags");
 
-//         // Act
-//         var response = await _client.PostAsync("/api/product", formData);
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-//     }
+    [Theory]
+    [InlineData("После обновления", "200", "10", "4", "20", HttpStatusCode.OK)]           // обычное обновление
+    [InlineData("Аб", "150", "5", "5", "10", HttpStatusCode.OK)]                           // мин. имя 2 символа
+    [InlineData("А", "150", "5", "5", "10", HttpStatusCode.BadRequest)]                    // имя 1 символ
+    [InlineData("Вода", "0", "0", "0", "0", HttpStatusCode.OK)]                            // нулевые КБЖУ
+    [InlineData("Сумма 100", "300", "40", "30", "30", HttpStatusCode.OK)]                  // сумма БЖУ = 100
+    [InlineData("Сумма >100", "300", "50", "50", "50", HttpStatusCode.BadRequest)]         // сумма БЖУ > 100
+    [InlineData("Отриц белки", "100", "-1", "0", "0", HttpStatusCode.BadRequest)]          // отрицательные белки
+    [InlineData("Отриц жиры", "100", "0", "-1", "0", HttpStatusCode.BadRequest)]           // отрицательные жиры
+    [InlineData("Отриц углев", "100", "0", "0", "-1", HttpStatusCode.BadRequest)]          // отрицательные углеводы
+    public async Task UpdateProduct_NutrientBoundaries_ReturnsExpectedStatus(
+        string name, string calories, string proteins, string fats, string carbs, HttpStatusCode expectedStatus)
+    {
+        var createForm = new MultipartFormDataContent();
+        createForm.Add(new StringContent("До обновления"), "Name");
+        createForm.Add(new StringContent("100"), "Calories");
+        createForm.Add(new StringContent("5"), "Proteins");
+        createForm.Add(new StringContent("2"), "Fats");
+        createForm.Add(new StringContent("10"), "Carbohydrates");
+        createForm.Add(new StringContent("0"), "Category");
+        createForm.Add(new StringContent("0"), "Readiness");
+        createForm.Add(new StringContent("0"), "DietaryFlags");
 
-//     /// <summary>
-//     /// Граничное значение: сумма БЖУ > 100 (превышение).
-//     /// Ожидаем: 400 Bad Request.
-//     /// </summary>
-//     [Fact]
-//     public async Task CreateProduct_NutrientSumExceeds100_ReturnsBadRequest()
-//     {
-//         // Arrange
-//         var formData = new MultipartFormDataContent();
-//         formData.Add(new StringContent("Перебор БЖУ"), "Name");
-//         formData.Add(new StringContent("500"), "Calories");
-//         formData.Add(new StringContent("50"), "Proteins");
-//         formData.Add(new StringContent("50"), "Fats");
-//         formData.Add(new StringContent("50"), "Carbohydrates"); // сумма 150 > 100
-//         formData.Add(new StringContent("0"), "Category");
-//         formData.Add(new StringContent("0"), "Readiness");
-//         formData.Add(new StringContent("0"), "DietaryFlags");
+        var createResponse = await _client.PostAsync("/api/product", createForm);
+        var created = await createResponse.Content.ReadFromJsonAsync<Product>();
 
-//         // Act
-//         var response = await _client.PostAsync("/api/product", formData);
+        var updateForm = new MultipartFormDataContent();
+        updateForm.Add(new StringContent(name), "Name");
+        updateForm.Add(new StringContent(calories), "Calories");
+        updateForm.Add(new StringContent(proteins), "Proteins");
+        updateForm.Add(new StringContent(fats), "Fats");
+        updateForm.Add(new StringContent(carbs), "Carbohydrates");
+        updateForm.Add(new StringContent("0"), "Category");
+        updateForm.Add(new StringContent("0"), "Readiness");
+        updateForm.Add(new StringContent("0"), "DietaryFlags");
 
-//         // Assert
-//         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-//     }
+        var response = await _client.PutAsync($"/api/product/{created!.Id}", updateForm);
 
-//     /// <summary>
-//     /// Параметризованный тест: разные значения БЖУ.
-//     /// Проверяет граничные и обычные значения.
-//     /// </summary>
-//     [Theory]
-//     [InlineData("0", "0", "0", HttpStatusCode.OK)]       // всё по нулям
-//     [InlineData("40", "30", "30", HttpStatusCode.OK)]     // сумма = 100
-//     [InlineData("100", "0", "0", HttpStatusCode.OK)]      // только белки 100
-//     [InlineData("0", "100", "0", HttpStatusCode.OK)]      // только жиры 100
-//     [InlineData("0", "0", "100", HttpStatusCode.OK)]      // только углеводы 100
-//     [InlineData("50", "50", "50", HttpStatusCode.BadRequest)] // сумма 150
-//     public async Task CreateProduct_NutrientBoundaries_ReturnsExpectedStatus(
-//         string proteins, string fats, string carbs, HttpStatusCode expectedStatus)
-//     {
-//         // Arrange
-//         var formData = new MultipartFormDataContent();
-//         formData.Add(new StringContent("Тест БЖУ"), "Name");
-//         formData.Add(new StringContent("200"), "Calories");
-//         formData.Add(new StringContent(proteins), "Proteins");
-//         formData.Add(new StringContent(fats), "Fats");
-//         formData.Add(new StringContent(carbs), "Carbohydrates");
-//         formData.Add(new StringContent("0"), "Category");
-//         formData.Add(new StringContent("0"), "Readiness");
-//         formData.Add(new StringContent("0"), "DietaryFlags");
+        Assert.Equal(expectedStatus, response.StatusCode);
+    }
 
-//         // Act
-//         var response = await _client.PostAsync("/api/product", formData);
+    [Fact]
+    public async Task UpdateProduct_NonExistingId_ReturnsNotFound()
+    {
+        var updateForm = new MultipartFormDataContent();
+        updateForm.Add(new StringContent("Неважно"), "Name");
+        updateForm.Add(new StringContent("100"), "Calories");
+        updateForm.Add(new StringContent("5"), "Proteins");
+        updateForm.Add(new StringContent("2"), "Fats");
+        updateForm.Add(new StringContent("10"), "Carbohydrates");
+        updateForm.Add(new StringContent("0"), "Category");
+        updateForm.Add(new StringContent("0"), "Readiness");
+        updateForm.Add(new StringContent("0"), "DietaryFlags");
 
-//         // Assert
-//         Assert.Equal(expectedStatus, response.StatusCode);
-//     }
-// }
+        var response = await _client.PutAsync($"/api/product/{Guid.NewGuid()}", updateForm);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+
+
+
+    [Theory]
+    [InlineData("category=0", HttpStatusCode.OK)]        // существующая
+    [InlineData("category=3", HttpStatusCode.OK)]        // отличная от сущ-ей
+    [InlineData("category=999", HttpStatusCode.BadRequest)]      // несуществующая
+    public async Task GetProducts_FilterByCategory_ReturnsOk(string filter, HttpStatusCode expectedStatus)
+    {
+        var response = await _client.GetAsync($"/api/product/filter?{filter}");
+
+        Assert.Equal(expectedStatus, response.StatusCode);
+         if (expectedStatus == HttpStatusCode.OK)
+        {
+            var products = await response.Content.ReadFromJsonAsync<List<Product>>();
+            Assert.NotNull(products);
+        }
+    }
+
+    [Theory]
+    [InlineData("readiness=0", HttpStatusCode.OK)]       // готов
+    [InlineData("readiness=2", HttpStatusCode.OK)]       // треб пригот
+    public async Task GetProducts_FilterByReadiness_ReturnsOk(string filter, HttpStatusCode expectedStatus)
+    {
+        var response = await _client.GetAsync($"/api/product/filter?{filter}");
+
+        Assert.Equal(expectedStatus, response.StatusCode);
+        var products = await response.Content.ReadFromJsonAsync<List<Product>>();
+        Assert.NotNull(products);
+    }
+
+    [Theory]
+    [InlineData("search=Тест", true)]                    // подстрока есть
+    [InlineData("search=zzzНеСуществует", true)]          // подстрока не сущ
+    [InlineData("search=", true)]                        // пустая стр
+    public async Task GetProducts_SearchByName_ReturnsOk(string filter, bool canBeEmpty)
+    {
+        var response = await _client.GetAsync($"/api/product/filter?{filter}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var products = await response.Content.ReadFromJsonAsync<List<Product>>();
+        Assert.NotNull(products);
+        if (!canBeEmpty) Assert.NotEmpty(products);
+    }
+
+    [Theory]
+    [InlineData("sortBy=name", HttpStatusCode.OK)]
+    [InlineData("sortBy=calories", HttpStatusCode.OK)]
+    [InlineData("sortBy=proteins", HttpStatusCode.OK)]
+    [InlineData("sortBy=fats", HttpStatusCode.OK)]
+    [InlineData("sortBy=carbohydrates", HttpStatusCode.OK)]
+    [InlineData("sortBy=calories&ascending=true", HttpStatusCode.OK)]
+    [InlineData("sortBy=calories&ascending=false", HttpStatusCode.OK)]
+    public async Task GetProducts_SortBy_ReturnsOk(string sort, HttpStatusCode expectedStatus)
+    {
+        var response = await _client.GetAsync($"/api/product/filter?{sort}");
+
+        Assert.Equal(expectedStatus, response.StatusCode);
+        var products = await response.Content.ReadFromJsonAsync<List<Product>>();
+        Assert.NotNull(products);
+    }
+
+    [Theory]
+    [InlineData("category=0&readiness=0&search=Тест", HttpStatusCode.OK)]
+    [InlineData("category=0&sortBy=calories", HttpStatusCode.OK)]
+    [InlineData("readiness=0&sortBy=name&ascending=false", HttpStatusCode.OK)]
+    public async Task GetProducts_CombinedFilters_ReturnsOk(string filters, HttpStatusCode expectedStatus)
+    {
+        var response = await _client.GetAsync($"/api/product/filter?{filters}");
+
+        Assert.Equal(expectedStatus, response.StatusCode);
+        var products = await response.Content.ReadFromJsonAsync<List<Product>>();
+        Assert.NotNull(products);
+    }
+
+
+}
+

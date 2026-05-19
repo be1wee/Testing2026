@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "16fd3g0dU5s=",
+  "dgSpecHash": "vVtXeO4HJ8w=",
   "success": true,
-  "projectFilePath": "C:\\Users\\tenan\\OneDrive\\Desktop\\testing\\back.Tests\\back.Tests.csproj",
+  "projectFilePath": "C:\\Users\\tenan\\OneDrive\\Desktop\\testing2\\Testing2026\\back.Tests\\back.Tests.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\tenan\\.nuget\\packages\\castle.core\\5.1.1\\castle.core.5.1.1.nupkg.sha512",
     "C:\\Users\\tenan\\.nuget\\packages\\coverlet.collector\\6.0.4\\coverlet.collector.6.0.4.nupkg.sha512",
